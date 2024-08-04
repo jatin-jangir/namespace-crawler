@@ -1,0 +1,69 @@
+---
+# Source: namespace-crawler/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-name-namespace-crawler
+  namespace: ns-crawler-controller
+  labels:
+    app.kubernetes.io/name: namespace-crawler
+automountServiceAccountToken: true
+---
+# Source: namespace-crawler/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: release-name-namespace-crawler
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+---
+# Source: namespace-crawler/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: release-name-namespace-crawler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: release-name-namespace-crawler
+subjects:
+- kind: ServiceAccount
+  name: release-name-namespace-crawler
+  namespace: ns-crawler-controller
+---
+# Source: namespace-crawler/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: release-name-namespace-crawler
+  namespace: ns-crawler-controller
+  labels:
+    app.kubernetes.io/name: namespace-crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: namespace-crawler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: namespace-crawler
+    spec:
+      serviceAccountName: release-name-namespace-crawler
+      containers:
+        - name: namespace-crawler
+          image: "jangirjs/secret-watcher:0.0.1-beta"
+          imagePullPolicy: Always
+          env:
+          - name: RESPONSIBILITY_LABEL_KEY
+            value: "namespace-crawler-responsibility"
+          - name: RESPONSIBILITY_LABEL_MASTER_VALUE
+            value: "master"
+          - name: RESPONSIBILITY_LABEL_SLAVE_VALUE
+            value: "slave"
+          - name: NAMESPACE_LIST_KEY
+            value: "namespace-crawler-responsible-for"
+          - name: NAMESPACE_VALUE_SEPERATOR
+            value: "__"

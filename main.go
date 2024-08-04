@@ -39,6 +39,25 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating Kubernetes client: %s", err.Error())
 	}
+	// Get the label key from the environment variable with a default value
+	labelKey := getEnv("RESPONSIBILITY_LABEL_KEY", "namespace-crawler-responsibility")
+
+	// Get the label key for master namespace from the environment variable with a default value
+	masterLabelValue := getEnv("RESPONSIBILITY_LABEL_MASTER_VALUE", "master")
+	slaveLabelValue := getEnv("RESPONSIBILITY_LABEL_SLAVE_VALUE", "slave")
+
+	// Get the label key for master namespace from the environment variable with a default value
+	masterNamespaceKey := getEnv("NAMESPACE_LIST_KEY", "namespace-crawler-responsible-for")
+
+	// Get the label key for master namespace from the environment variable with a default value
+	namespaceSeperator := getEnv("NAMESPACE_VALUE_SEPERATOR", "__")
+
+	fmt.Println("------------------- runnning with values ------------------- ")
+	fmt.Println("RESPONSIBILITY_LABEL_KEY -- ", labelKey)
+	fmt.Println("RESPONSIBILITY_LABEL_MASTER_VALUE -- ", masterLabelValue)
+	fmt.Println("RESPONSIBILITY_LABEL_SLAVE_VALUE -- ", slaveLabelValue)
+	fmt.Println("NAMESPACE_LIST_KEY -- ", masterNamespaceKey)
+	fmt.Println("NAMESPACE_VALUE_SEPERATOR -- ", namespaceSeperator)
 
 	// Create a shared informer factory
 	informerFactory := informers.NewSharedInformerFactory(clientset, time.Minute*10)
@@ -53,19 +72,19 @@ func main() {
 	secretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			secret := obj.(*v1.Secret)
-			if isMaster(secret) {
+			if isMaster(secret, labelKey, masterLabelValue) {
 				secretEvents <- SecretEvent{Secret: secret, Action: "created"}
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			secret := newObj.(*v1.Secret)
-			if isMaster(secret) {
+			if isMaster(secret, labelKey, masterLabelValue) {
 				secretEvents <- SecretEvent{Secret: secret, Action: "updated"}
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			secret := obj.(*v1.Secret)
-			if isMaster(secret) {
+			if isMaster(secret, labelKey, masterLabelValue) {
 				secretEvents <- SecretEvent{Secret: secret, Action: "deleted"}
 			}
 		},
@@ -75,7 +94,7 @@ func main() {
 	go func() {
 		for event := range secretEvents {
 			fmt.Printf("Secret %s in namespace %s was %s\n", event.Secret.Name, event.Secret.Namespace, event.Action)
-			handleSecretEvent(clientset, event.Secret)
+			handleSecretEvent(clientset, event.Secret, labelKey, slaveLabelValue, masterNamespaceKey, namespaceSeperator)
 		}
 	}()
 
@@ -99,26 +118,27 @@ func main() {
 }
 
 // Check if the secret has the label "namespace-crawler-responsibility: master"
-func isMaster(secret *v1.Secret) bool {
-	value, exists := secret.Labels["namespace-crawler-responsibility"]
-	return exists && value == "master"
+func isMaster(secret *v1.Secret, labelKey string, masterLabelValue string) bool {
+	value, exists := secret.Labels[labelKey]
+	return exists && value == masterLabelValue
 }
 
 // Handle secret events and create/update secrets in target namespaces
-func handleSecretEvent(clientset *kubernetes.Clientset, secret *v1.Secret) {
-	targetNamespaces, exists := secret.Labels["namespace-crawler-responsible-for"]
+func handleSecretEvent(clientset *kubernetes.Clientset, secret *v1.Secret, labelKey string, slaveLabelValue string, masterNamespaceKey string, namespaceSeperator string) {
+	targetNamespaces, exists := secret.Labels[masterNamespaceKey]
 	if !exists {
+		fmt.Printf("Secret %s in namespace %s  don't contains %s label", secret.Name, secret.Namespace, masterNamespaceKey)
 		return
 	}
 
-	namespaces := strings.Split(targetNamespaces, "__")
+	namespaces := strings.Split(targetNamespaces, namespaceSeperator)
 	for _, ns := range namespaces {
 		newSecret := &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      secret.Name,
 				Namespace: ns,
 				Labels: map[string]string{
-					"namespace-crawler-responsibility": "client",
+					labelKey: slaveLabelValue,
 				},
 			},
 			Data: secret.Data,
@@ -145,4 +165,11 @@ func handleSecretEvent(clientset *kubernetes.Clientset, secret *v1.Secret) {
 			}
 		}
 	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
 }
