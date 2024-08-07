@@ -15,9 +15,27 @@ kind: ClusterRole
 metadata:
   name: release-name-namespace-crawler
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: [""]
+    resources:
+      - secrets
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
 ---
 # Source: namespace-crawler/templates/serviceaccount.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -54,7 +72,7 @@ spec:
       serviceAccountName: release-name-namespace-crawler
       containers:
         - name: namespace-crawler
-          image: "jangirjs/secret-watcher:0.0.1-beta"
+          image: "jangirjs/namespace-crawler:0.0.1-beta"
           imagePullPolicy: Always
           env:
           - name: RESPONSIBILITY_LABEL_KEY
